@@ -1,0 +1,1271 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}PDF MCQ Generator{% endblock %}
+
+
+
+
+
+
+
+{% block css %}
+<link rel="stylesheet" type="text/css" href="{% static 'css/pdf_mcq_generator.css' %}">
+<style>
+    /* Additional styles */
+    .session-date {
+        font-size: 11px;
+        color: #6c757d;
+        margin-left: auto;
+    }
+    .chat-item {
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .chat-item:hover {
+        background: #f8f9fa;
+        transform: translateX(5px);
+    }
+    .correct-option {
+        background-color: #d4edda !important;
+        border-left: 3px solid #28a745 !important;
+    }
+    .highlight-unanswered {
+        animation: highlight 1s ease;
+    }
+    @keyframes highlight {
+        0% { background-color: #fff3cd; }
+        100% { background-color: transparent; }
+    }
+    .temp-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: white;
+        border-radius: 8px;
+        padding: 12px 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        z-index: 9999;
+        animation: slideInRight 0.3s ease;
+        border-left: 4px solid #4f46e5;
+    }
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    #topicToGenerate {
+        cursor: pointer;
+        text-decoration: underline;
+        color: #007bff; /* Optional: to make it look more like a link */
+    }
+    .topic-tag {
+        cursor: pointer;
+        text-decoration: underline;
+        color: #007bff;
+        font-weight: 500;
+    }
+    .topic-tag:hover {
+        color: #0056b3;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<script src="{% static 'js/pdf_mcq_generator.js' %}"></script>
+
+<div class="mcq-split-container">
+    
+    <!-- LEFT SIDEBAR - Chat History -->
+    <div class="chat-history-sidebar">
+        <div class="chat-header">
+            <i class="fas fa-history"></i>
+            <h3>Chat History</h3>
+            <span class="chat-count">{{ chat_history|length }}</span>
+        </div>
+        
+        <div class="chat-list">
+            {% if chat_history %}
+                {% for chat in chat_history %}
+                <div class="chat-item" onclick="loadSession('{{ chat.session_id }}'); window.scrollToQuestions();">
+                    <div class="chat-item-question">
+                        <i class="fas fa-file-alt"></i>
+                        <span>MCQ Session</span>
+                    </div>
+                    <div class="chat-item-stats">
+                        <i class="fas fa-question-circle"></i>
+                        <span>{{ chat.mcq_count }} Questions</span>
+                    </div>
+                    <div class="session-date">
+                        <i class="far fa-calendar-alt"></i>
+                        {{ chat.display_date }}
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-chat">
+                    <i class="fas fa-comments"></i>
+                    <p>No chat history yet</p>
+                    <small>Your conversations will appear here</small>
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="chat-footer">
+            <form method="POST" action="{% url 'pdf_mcq:clear_history' %}" style="display: inline;" onsubmit="return confirm('Clear all chat history? This will delete all your generated questions.');">
+                {% csrf_token %}
+                <button type="submit" class="clear-chat-btn">
+                    <i class="fas fa-trash-alt"></i>
+                    Clear History
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- RIGHT MAIN CONTENT -->
+    <div class="main-content-area">
+        
+        <!-- Header -->
+        <div class="content-header">
+            <h1>
+                <i class="fas fa-file-pdf"></i>
+                PDF MCQ Generator
+            </h1>
+            <p>Upload PDFs and generate MCQs instantly</p>
+        </div>
+        
+        <!-- Upload PDF Section -->
+        <div class="upload-section">
+            <div class="section-card">
+                <div class="section-icon">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                </div>
+                <h3>Upload PDF Files</h3>
+                <p>Upload one or more PDF documents to generate questions from</p>
+                
+                <form method="POST" enctype="multipart/form-data" class="upload-form" id="uploadForm">
+                    {% csrf_token %}
+                    
+                    <div class="file-input-wrapper" id="dropZone">
+                        <input type="file" name="pdf_files" id="pdfFiles" multiple accept=".pdf" required>
+                        <div class="file-input-content">
+                            <i class="fas fa-file-pdf"></i>
+                            <span id="fileCount">Choose PDF files</span>
+                            <small>or drag and drop</small>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn-process" id="processBtn">
+                        <i class="fas fa-cogs"></i>
+                        <span class="btn-label">Process PDFs</span>
+                        <div class="btn-spinner"></div>
+                    </button>
+                </form>
+                
+                <div class="selected-files" id="selectedFiles"></div>
+                
+                {% if messages %}
+                    {% for message in messages %}
+                    <div class="success-message {% if message.tags %}{{ message.tags }}{% endif %}">
+                        <i class="fas fa-{% if 'error' in message.tags %}exclamation-circle{% else %}check-circle{% endif %}"></i>
+                        <div class="success-content">
+                            <strong>{{ message }}</strong>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Generate Questions Section -->
+        <div class="question-section" id="questionSection">
+            <div class="section-card {% if pdfs_processed %}active{% endif %}">
+                <div class="section-icon">
+                    <i class="fas fa-question-circle"></i>
+                </div>
+                <h3>Generate MCQs</h3>
+                <p>Enter the number of MCQs you want to generate from your PDFs</p>
+                
+                <form method="POST" class="question-form" id="questionForm">
+                    {% csrf_token %}
+                    
+                    <div class="input-wrapper">
+                        <input 
+                            type="number" 
+                            name="mcq_count" 
+                            id="mcqCountInput"
+                            placeholder="Number of MCQs (1-100)" 
+                            value="10"
+                            min="1"
+                            max="100"
+                            required
+                            {% if not pdfs_processed %}disabled{% endif %}
+                        >
+                        <button type="submit" class="btn-generate" id="generateBtn" {% if not pdfs_processed %}disabled{% endif %}>
+                            <i class="fas fa-magic"></i>
+                            <span>Generate MCQs</span>
+                            <div class="btn-spinner"></div>
+                        </button>
+                    </div>
+                    
+                    <div class="input-hint-text">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Enter any number between 1-100. Questions will be generated from your uploaded PDFs.</span>
+                    </div>
+                    
+                    {% if not pdfs_processed %}
+                    <div class="info-message" id="infoMessage">
+                        <i class="fas fa-info-circle"></i>
+                        Please upload and process PDFs first
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+        
+        <!-- DYNAMIC QUESTIONS LIST -->
+        {% if show_test and current_mcqs %}
+        <div class="current-conversation" id="currentConversation">
+            <div class="conversation-header">
+                <h2 class="questions-list-title">
+                    <i class="fas fa-list"></i>
+                    MCQs ({{ current_mcqs|length }} Questions)
+                </h2>
+                <input type="hidden" id="currentSessionId" value="{{ current_session.session_id }}">
+                <button class="btn-submit-test" id="submitTestBtn" onclick="submitTest()">
+                    <i class="fas fa-check-circle"></i>
+                    Submit Test
+                </button>
+            </div>
+            
+            <!-- Test Progress Bar -->
+            <div class="test-progress-bar" id="testProgressBar">
+                <div class="progress-info">
+                    <span id="answeredCount">0</span>/<span id="totalQuestions">{{ current_mcqs|length }}</span> Questions Answered
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+                </div>
+            </div>
+            
+            <!-- Questions Container -->
+            <div class="test-container" id="testContainer">
+                {% for mcq in current_mcqs %}
+                <div class="question-card" id="mcq-{{ forloop.counter }}" data-question-id="{{ mcq.number }}" 
+                    data-correct="{{ mcq.correct_letter }}" data-question-db-id="{{ mcq.id }}" data-topic="{{ mcq.topic }}">
+                    
+                    <div class="question-header">
+                        <span class="question-number">Question {{ mcq.number }}.</span>
+                        <span class="mcq-badge">
+                            <i class="far fa-clock"></i> MCQ
+                        </span>
+                    </div>
+                    
+                    <div class="question-content">
+                        <div class="question-text">{{ mcq.question }}</div>
+                        
+                        <!-- MCQ Options -->
+                        {% if mcq.options %}
+                        <div class="mcq-options test-mode">
+                            {% for option in mcq.options %}
+                            <label class="option-row test-option" data-question="{{ forloop.parentloop.counter }}" data-option="{{ option.letter }}" data-correct="{% if option.is_correct %}true{% else %}false{% endif %}">
+                                <input type="radio" name="question_{{ forloop.parentloop.counter }}" value="{{ option.letter }}" class="option-radio" onchange="handleOptionSelect(this, {{ forloop.parentloop.counter }}, '{{ option.letter }}')">
+                                <span class="option-letter">{{ option.letter }}</span>
+                                <span class="option-text">{{ option.text }}</span>
+                                <span class="selected-indicator">
+                                    <i class="fas fa-check-circle"></i>
+                                </span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Hidden Answer Section -->
+                        <div class="answer-hidden-section" id="answerSection-{{ forloop.counter }}" style="display: none;">
+                            <div class="answer-divider">
+                                <i class="fas fa-check-circle"></i>
+                                Correct Answer
+                            </div>
+                            <div class="answer-box">
+                                <div class="correct-answer-display">
+                                    {{ mcq.correct_answer }}
+                                </div>
+                            </div>
+                            {% if mcq.explanation %}
+                            <div class="explanation-box">
+                                <strong>Explanation:</strong>
+                                <div class="explanation-content">
+                                    {{ mcq.explanation }}
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <!-- Test Action Buttons -->
+            <div class="test-actions">
+                <button class="btn-review" onclick="scrollToUnanswered()">
+                    <i class="fas fa-eye"></i>
+                    Review Unanswered
+                </button>
+                <button class="btn-submit-test-large" onclick="submitTest()">
+                    <i class="fas fa-check-circle"></i>
+                    Submit Test
+                </button>
+                <button class="btn-download-pdf" onclick="downloadMcqsAsPdf()">
+                    <i class="fas fa-download"></i>
+                    Download MCQs (PDF)
+                </button>
+                <button class="btn-feedback" onclick="openFeedbackModal()">
+                    <i class="fas fa-comment-alt"></i>
+                    Feedback/Review
+                </button>
+            </div>
+        </div>
+        {% elif current_session_data %}
+        <div class="current-conversation">
+            <div class="conversation-header">
+                <h2 class="questions-list-title">
+                    <i class="fas fa-list"></i>
+                    Previous Session ({{ current_session_data.mcq_count }} Questions)
+                </h2>
+            </div>
+            <div class="test-container">
+                {% for mcq in current_session_data.mcqs %}
+                <div class="question-card">
+                    <div class="question-header">
+                        <span class="question-number">Question {{ mcq.number }}.</span>
+                    </div>
+                    <div class="question-content">
+                        <div class="question-text">{{ mcq.question }}</div>
+                        {% if mcq.options %}
+                        <div class="mcq-options">
+                            {% for option in mcq.options %}
+                            <div class="option-row">
+                                <span class="option-letter">{{ option.letter }}</span>
+                                <span class="option-text">{{ option.text }}</span>
+                                {% if option.is_correct %}
+                                <span class="correct-badge"><i class="fas fa-check"></i> Correct</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <!-- Empty state -->
+        <div class="empty-questions">
+            <div class="empty-questions-icon">
+                <i class="fas fa-question-circle"></i>
+            </div>
+            <h3>No Questions Generated Yet</h3>
+            <p>Upload PDFs and click Generate to create multiple-choice questions.</p>
+            <div class="empty-steps">
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <span>Upload PDFs</span>
+                </div>
+                <div class="step-arrow">
+                    <i class="fas fa-arrow-right"></i>
+                </div>
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <span>Click Process</span>
+                </div>
+                <div class="step-arrow">
+                    <i class="fas fa-arrow-right"></i>
+                </div>
+                <div class="step">
+                    <span class="step-number">3</span>
+                    <span>Enter Number of MCQs</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Features Section -->
+        <div class="features-section">
+            <div class="feature-item">
+                <i class="fas fa-bolt"></i>
+                <span>Instant Generation</span>
+            </div>
+            <div class="feature-item">
+                <i class="fas fa-check-circle"></i>
+                <span>Multiple PDFs</span>
+            </div>
+            <div class="feature-item">
+                <i class="fas fa-brain"></i>
+                <span>AI-Powered</span>
+            </div>
+            <div class="feature-item">
+                <i class="fas fa-history"></i>
+                <span>Chat History</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chatbot Icon -->
+<button id="chatbotIcon" class="chatbot-icon" style="display: none;">
+    <i class="fas fa-comment-dots"></i>
+</button>
+
+<!-- Chatbot Window -->
+<div id="chatbotWindow" class="chatbot-window" style="display: none;">
+    <div class="resize-handle top-left"></div>
+    <div class="resize-handle top-right"></div>
+    <div class="resize-handle bottom-left"></div>
+    <div class="resize-handle bottom-right"></div>
+    <div class="resize-handle top"></div>
+    <div class="resize-handle bottom"></div>
+    <div class="resize-handle left"></div>
+    <div class="resize-handle right"></div>
+    <div class="chatbot-header">
+        <h3>PDF Chatbot</h3>
+        <button class="chatbot-close-btn" id="chatbotCloseBtn">&times;</button>
+    </div>
+    <div class="chatbot-body" id="chatbotBody">
+        <div class="chat-message bot-message">
+            Hello! Ask me anything about your PDFs or MCQs.
+        </div>
+    </div>
+    <div class="chatbot-input-area">
+        <input type="text" id="chatbotInput" placeholder="Ask a question...">
+        <button id="chatbotSendBtn"><i class="fas fa-paper-plane"></i></button>
+    </div>
+</div>
+
+<!-- Results Modal -->
+<div class="results-modal" id="resultsModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-chart-bar"></i> Test Results</h3>
+            <div class="modal-header-actions">
+                <button class="modal-fullscreen-btn" onclick="toggleFullscreenModal('resultsModal')">
+                    <i class="fas fa-expand"></i>
+                </button>
+                <button class="modal-close" onclick="closeResultsModal()">&times;</button>
+            </div>
+        </div>
+        <div class="modal-body">
+            <div class="results-summary">
+                <div class="result-circle">
+                    <div class="result-percentage" id="resultPercentage">0%</div>
+                </div>
+                <div class="result-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Total Questions:</span>
+                        <span class="stat-value" id="totalQuestionsStat">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Answered:</span>
+                        <span class="stat-value" id="answeredStat">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Correct:</span>
+                        <span class="stat-value correct-stat" id="correctStat">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Incorrect:</span>
+                        <span class="stat-value incorrect-stat" id="incorrectStat">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Unanswered:</span>
+                        <span class="stat-value unanswered-stat" id="unansweredStat">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Time Taken:</span>
+                        <span class="stat-value" id="timeTakenStat">0s</span>
+                    </div>
+                </div>
+            </div>
+            <div class="results-breakdown">
+                <h4>Question Breakdown</h4>
+                <div class="breakdown-list" id="breakdownList"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-review-test" onclick="reviewTest()">
+                <i class="fas fa-redo-alt"></i>
+                Review Test
+            </button>
+            <button class="btn-show-answers" onclick="showAllAnswers()">
+                <i class="fas fa-eye"></i>
+                Show All Answers
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if current_mcqs are displayed (meaning new MCQs were generated or a session was loaded)
+        const currentConversation = document.getElementById('currentConversation');
+        if (currentConversation) {
+            window.scrollToQuestions();
+        }
+    });
+</script>
+                
+
+<!-- Generate By Topic Modal -->
+<div class="generate-by-topic-modal" id="generateByTopicModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-brain"></i> Generate MCQs by Topic</h3>
+            <button class="modal-close" onclick="closeGenerateByTopicModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <p>Generate more questions specifically about: <strong id="topicToGenerate" onclick="openTopicSummary(this.textContent)"></strong></p>
+            <div class="input-wrapper">
+                <label for="mcqCountByTopic">Number of MCQs:</label>
+                <input type="number" id="mcqCountByTopic" value="5" min="1" max="100">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-generate" onclick="generateMcqsForTopic()">
+                <i class="fas fa-magic"></i> Generate
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Feedback Modal -->
+<div class="feedback-modal" id="feedbackModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-comment-alt"></i> Provide Feedback</h3>
+            <button class="modal-close" onclick="closeFeedbackModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <form id="feedbackForm">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="feedbackQuestion1">How would you rate the MCQ generation quality?</label>
+                    <select id="feedbackQuestion1" name="quality_rating" required>
+                        <option value="">Select a rating</option>
+                        <option value="5">Excellent</option>
+                        <option value="4">Good</option>
+                        <option value="3">Average</option>
+                        <option value="2">Poor</option>
+                        <option value="1">Very Poor</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="feedbackQuestion2">Was the content relevant to the uploaded PDF?</label>
+                    <select id="feedbackQuestion2" name="relevance_rating" required>
+                        <option value="">Select an option</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="feedbackDescription">Any additional comments or suggestions?</label>
+                    <textarea id="feedbackDescription" name="description" rows="5"></textarea>
+                </div>
+                <button type="submit" class="btn-submit-feedback">
+                    <i class="fas fa-paper-plane"></i> Submit Feedback
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block js %}
+<script>
+// Track user answers and session
+let userAnswers = {};
+let currentSessionId = '{% if current_session %}{{ current_session.session_id }}{% endif %}';
+let testResults = null;
+let currentTopic = ''; // To store the topic when the modal is opened
+let testStartTime; // Global variable to store the test start time
+
+
+
+// ==================== FILE HANDLING ====================
+    const pdfInput = document.getElementById('pdfFiles');
+    const fileCountSpan = document.getElementById('fileCount');
+    const selectedFilesDiv = document.getElementById('selectedFiles');
+    const dropZone = document.getElementById('dropZone');
+    const pdfColors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'];
+
+    // Global functions (accessible from HTML attributes and other scripts)
+    function openTopicSummary(topic) {
+        if (currentSessionId) {
+            const url = `/pdf_mcq/summarize-topic/?session_id=${currentSessionId}&topic=${encodeURIComponent(topic)}`;
+            window.open(url, '_blank');
+        } else {
+            showNotification('Please generate MCQs first to get a session.', 'warning');
+        }
+    }
+
+    function displaySelectedFiles(files) {
+        console.log('displaySelectedFiles called with:', files);
+        selectedFilesDiv.innerHTML = '<div class="selected-files-header"><i class="fas fa-file-pdf"></i> Selected Files:</div>';
+        
+        if (files.length === 0) {
+            selectedFilesDiv.innerHTML += '<p>No files to display.</p>';
+            console.log('selectedFilesDiv innerHTML after no files:', selectedFilesDiv.innerHTML);
+            return;
+        }
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const fileItem = document.createElement('div');
+            fileItem.className = 'selected-file-item';
+            fileItem.innerHTML = `
+                <i class="fas fa-file-pdf" style="color: ${pdfColors[i % pdfColors.length]};"></i>
+                <span class="file-name">${file.name}</span>
+                <span class="file-size">${(file.size / 1024).toFixed(1)} KB</span>
+                <i class="fas fa-check-circle file-check"></i>
+            `;
+            selectedFilesDiv.appendChild(fileItem);
+            console.log('Appended file item:', file.name);
+        }
+        console.log('selectedFilesDiv innerHTML after files appended:', selectedFilesDiv.innerHTML);
+    }
+
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+function initializeTest() {
+    const totalQuestions = document.querySelectorAll('.question-card').length;
+    if (totalQuestions === 0) return;
+    
+    // Start the timer
+    testStartTime = new Date().getTime();
+    
+    // Initialize userAnswers
+    for (let i = 1; i <= totalQuestions; i++) {
+        const checkedRadio = document.querySelector(`input[name="question_${i}"]:checked`);
+        if (checkedRadio) {
+            userAnswers[i] = checkedRadio.value;
+            // Mark as selected visually
+            const selectedLabel = checkedRadio.closest('.test-option');
+            if (selectedLabel) selectedLabel.classList.add('selected');
+        } else {
+            userAnswers[i] = null;
+        }
+    }
+    
+    updateProgressBar();
+}
+
+function handleOptionSelect(radio, questionId, selectedOption) {
+    // Remove selected class from all options in this question
+    const questionOptions = document.querySelectorAll(`#mcq-${questionId} .test-option`);
+    questionOptions.forEach(opt => opt.classList.remove('selected'));
+    
+    // Add selected class to current option
+    radio.closest('.test-option').classList.add('selected');
+    
+    // Store user answer
+    userAnswers[questionId] = selectedOption;
+    
+    // Mark question as answered
+    const questionCard = document.getElementById(`mcq-${questionId}`);
+    if (questionCard) questionCard.classList.add('answered');
+    
+    // Update progress bar
+    updateProgressBar();
+}
+
+function updateProgressBar() {
+    const totalQuestions = document.querySelectorAll('.question-card').length;
+    const answeredCount = Object.values(userAnswers).filter(a => a !== null).length;
+    const progressPercentage = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
+    
+    const progressFill = document.getElementById('progressFill');
+    const answeredSpan = document.getElementById('answeredCount');
+    const totalSpan = document.getElementById('totalQuestions');
+    
+    if (progressFill) progressFill.style.width = `${progressPercentage}%`;
+    if (answeredSpan) answeredSpan.textContent = answeredCount;
+    if (totalSpan) totalSpan.textContent = totalQuestions;
+}
+
+function scrollToUnanswered() {
+    const totalQuestions = document.querySelectorAll('.question-card').length;
+    
+    for (let i = 1; i <= totalQuestions; i++) {
+        if (userAnswers[i] === null) {
+            const unansweredCard = document.getElementById(`mcq-${i}`);
+            if (unansweredCard) {
+                unansweredCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                unansweredCard.classList.add('highlight-unanswered');
+                setTimeout(() => unansweredCard.classList.remove('highlight-unanswered'), 2000);
+                break;
+            }
+        }
+    }
+}
+
+function getOptionText(questionId, optionLetter) {
+    const optionRows = document.querySelectorAll(`#mcq-${questionId} .option-row`);
+    for (let row of optionRows) {
+        const letter = row.querySelector('.option-letter')?.textContent.trim();
+        if (letter && letter.charAt(0).toUpperCase() === optionLetter.charAt(0).toUpperCase()) {
+            return row.querySelector('.option-text')?.textContent.trim() || '';
+        }
+    }
+    return '';
+}
+
+function submitTest() {
+    const totalQuestions = document.querySelectorAll('.question-card').length;
+    const answeredCount = Object.values(userAnswers).filter(a => a !== null).length;
+    
+    if (answeredCount < totalQuestions) {
+        if (!confirm(`You have ${totalQuestions - answeredCount} unanswered questions. Do you still want to submit?`)) {
+            return;
+        }
+    }
+    
+    // Calculate results
+    let correctCount = 0;
+    let incorrectCount = 0;
+    const breakdown = [];
+    
+    for (let i = 1; i <= totalQuestions; i++) {
+        const questionCard = document.getElementById(`mcq-${i}`);
+        const correctAnswer = questionCard?.dataset.correct?.charAt(0).toUpperCase() || '';
+        const userAnswer = userAnswers[i]?.charAt(0).toUpperCase() || null;
+        const topic = questionCard?.dataset.topic;
+        
+        const isCorrect = (userAnswer && userAnswer === correctAnswer);
+        
+        if (isCorrect) correctCount++;
+        else if (userAnswer) incorrectCount++;
+        
+        // Get full text for display
+        let correctFullText = '';
+        let userFullText = '';
+        
+        const optionRows = document.querySelectorAll(`#mcq-${i} .option-row`);
+        for (let row of optionRows) {
+            const letter = row.querySelector('.option-letter')?.textContent.trim();
+            const text = row.querySelector('.option-text')?.textContent.trim();
+            if (letter && letter.charAt(0).toUpperCase() === correctAnswer) {
+                correctFullText = text || '';
+            }
+            if (letter && letter.charAt(0).toUpperCase() === userAnswer) {
+                userFullText = text || '';
+            }
+        }
+        
+        breakdown.push({
+            question: i,
+            userAnswer: userAnswer,
+            userFullText: userFullText,
+            correctAnswer: correctAnswer,
+            correctFullText: correctFullText,
+            isCorrect: isCorrect,
+            isAnswered: userAnswer !== null,
+            topic: topic
+        });
+    }
+    
+    const unansweredCount = totalQuestions - (correctCount + incorrectCount);
+    const percentage = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+
+    // Calculate time taken
+    let timeTaken = 0;
+    if (testStartTime) {
+        const endTime = new Date().getTime();
+        timeTaken = Math.round((endTime - testStartTime) / 1000); // Time in seconds
+    }
+    
+    testResults = {
+        total: totalQuestions,
+        answered: answeredCount,
+        correct: correctCount,
+        incorrect: incorrectCount,
+        unanswered: unansweredCount,
+        percentage: percentage,
+        breakdown: breakdown,
+        timeTaken: timeTaken // Add time taken to results
+    };
+    
+    showResultsModal(testResults);
+    
+    // Save answers to server if session exists
+    if (currentSessionId) {
+        saveAnswersToServer(timeTaken);
+    }
+}
+
+function saveAnswersToServer(timeTaken) {
+    const answers = {};
+    const totalQuestions = document.querySelectorAll('.question-card').length;
+    
+    for (let i = 1; i <= totalQuestions; i++) {
+        const questionCard = document.getElementById(`mcq-${i}`);
+        const questionDbId = questionCard?.dataset.questionDbId;
+        
+        if (questionDbId && userAnswers[i]) {
+            answers[questionDbId] = userAnswers[i];
+        }
+    }
+    
+    console.log("Saving answers:", answers);
+    console.log("Session ID:", currentSessionId);
+    console.log("Time Taken:", timeTaken);
+    
+    if (Object.keys(answers).length === 0) {
+        console.log("No answers to save");
+        return;
+    }
+    
+    fetch("{% url 'pdf_mcq:submit_answers' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            session_id: currentSessionId,
+            answers: answers,
+            time_taken: timeTaken // Send time taken to backend
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            console.log('Answers saved successfully:', data);
+            showNotification('Your answers have been saved!', 'success');
+        } else {
+            console.error('Error saving answers:', data);
+            showNotification('Error saving answers: ' + data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error saving answers:', error);
+        showNotification('Error saving answers. Please try again.', 'error');
+    });
+}
+
+function showResultsModal(results) {
+    const modal = document.getElementById('resultsModal');
+    if (!modal) return;
+    
+    document.getElementById('totalQuestionsStat').textContent = results.total;
+    document.getElementById('answeredStat').textContent = results.answered;
+    document.getElementById('correctStat').textContent = results.correct;
+    document.getElementById('incorrectStat').textContent = results.incorrect;
+    document.getElementById('unansweredStat').textContent = results.unanswered;
+    document.getElementById('resultPercentage').textContent = results.percentage + '%';
+    document.getElementById('timeTakenStat').textContent = `${results.timeTaken}s`;
+    
+    const breakdownList = document.getElementById('breakdownList');
+    if (breakdownList) {
+        breakdownList.innerHTML = '';
+        
+        results.breakdown.forEach(item => {
+            const breakdownItem = document.createElement('div');
+            breakdownItem.className = `breakdown-item ${item.isCorrect ? 'correct' : (item.isAnswered ? 'incorrect' : 'unanswered')}`;
+            
+            const userDisplay = item.isAnswered ? 
+                `${item.userAnswer}) ${item.userFullText}` : 'Not answered';
+            const correctDisplay = `${item.correctAnswer}) ${item.correctFullText}`;
+            
+            let topicHtml = '';
+            if (item.topic) { // Display topic if it exists for all questions
+                topicHtml = `<div class="breakdown-topic">Topic: <span class="topic-tag" onclick="openGenerateByTopicModal('${item.topic}')">${item.topic}</span></div>`;
+            }
+
+            breakdownItem.innerHTML = `
+                <div class="breakdown-header">
+                    <span class="breakdown-question">Question ${item.question}</span>
+                    <span class="breakdown-status-icon">${item.isCorrect ? '✅' : (item.isAnswered ? '❌' : '⭕')}</span>
+                </div>
+                <div class="breakdown-details">
+                    <div class="user-answer">
+                        <span class="label">Your answer:</span>
+                        <span class="user-answer-text">${userDisplay}</span>
+                    </div>
+                    <div class="correct-answer">
+                        <span class="label">Correct:</span>
+                        <span class="correct-text">${correctDisplay}</span>
+                    </div>
+                    ${topicHtml}
+                </div>
+            `;
+            breakdownList.appendChild(breakdownItem);
+        });
+    }
+    
+    modal.style.display = 'flex';
+}
+
+function closeResultsModal() {
+    document.getElementById('resultsModal').style.display = 'none';
+}
+
+function reviewTest() {
+    closeResultsModal();
+}
+
+function showAllAnswers() {
+        closeResultsModal();
+        
+        const totalQuestions = document.querySelectorAll('.question-card').length;
+        for (let i = 1; i <= totalQuestions; i++) {
+            const answerSection = document.getElementById(`answerSection-${i}`);
+            if (answerSection) answerSection.style.display = 'block';
+            
+            const optionRows = document.querySelectorAll(`#mcq-${i} .option-row`);
+            optionRows.forEach(row => {
+                if (row.dataset.correct === 'true') {
+                    row.classList.add('correct-option');
+                }
+                // Disable radio buttons to prevent further selection
+                const radio = row.querySelector('input[type="radio"]');
+                if (radio) {
+                    radio.disabled = true;
+                }
+            });
+
+            // Add topic to the question header
+            const questionCard = document.getElementById(`mcq-${i}`);
+            const topic = questionCard?.dataset.topic;
+            if (topic) {
+                const questionHeader = questionCard.querySelector('.question-header');
+                let topicSpan = questionHeader.querySelector('.topic-tag-display');
+                if (!topicSpan) {
+                    topicSpan = document.createElement('span');
+                    topicSpan.className = 'topic-tag topic-tag-display';
+                    topicSpan.style.marginLeft = 'auto'; // Push to the right
+                    topicSpan.onclick = () => openTopicSummary(topic);
+                    questionHeader.appendChild(topicSpan);
+                }
+                topicSpan.textContent = topic;
+            }
+        }
+    }
+
+function loadSession(sessionId) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '';
+    
+    const csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrfmiddlewaretoken';
+    csrfInput.value = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    
+    const loadInput = document.createElement('input');
+    loadInput.type = 'hidden';
+    loadInput.name = 'load_session';
+    loadInput.value = sessionId;
+    
+    form.appendChild(csrfInput);
+    form.appendChild(loadInput);
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = 'temp-notification';
+    notification.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check-circle' : 'info-circle'}"></i>
+        <span>${message}</span>
+    `;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 3000);
+}
+
+function openGenerateByTopicModal(topic) {
+    currentTopic = topic;
+    document.getElementById('topicToGenerate').textContent = topic;
+    document.getElementById('generateByTopicModal').style.display = 'flex';
+}
+
+function closeGenerateByTopicModal() {
+    document.getElementById('generateByTopicModal').style.display = 'none';
+}
+
+function generateMcqsForTopic() {
+    const mcqCount = document.getElementById('mcqCountByTopic').value;
+    const generateButton = document.querySelector('#generateByTopicModal .btn-generate');
+    const originalButtonHtml = generateButton.innerHTML;
+
+    if (mcqCount < 1 || mcqCount > 100) {
+        showNotification('Please enter a number between 1 and 100.', 'warning');
+        return;
+    }
+
+    // Disable button and show loading indicator
+    generateButton.disabled = true;
+    generateButton.innerHTML = '<div class="btn-spinner"></div> Generating...';
+
+    // AJAX call to the new Django view
+    fetch("{% url 'pdf_mcq:generate_by_topic' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            topic: currentTopic,
+            mcq_count: mcqCount
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Re-enable button and restore original HTML
+        generateButton.disabled = false;
+        generateButton.innerHTML = originalButtonHtml;
+
+        if (data.status === 'success') {
+            showNotification(`Generated ${data.mcq_count} MCQs for topic "${currentTopic}"!`, 'success');
+            closeGenerateByTopicModal();
+            // Optionally, redirect to the new session or update the current view
+            window.location.href = `/pdf_mcq/?session_id=${data.session_id}`;
+        } else {
+            showNotification('Error generating MCQs by topic: ' + data.message, 'error');
+        }
+    })
+    .catch(error => {
+        // Re-enable button and restore original HTML
+        generateButton.disabled = false;
+        generateButton.innerHTML = originalButtonHtml;
+        console.error('Error generating MCQs by topic:', error);
+        showNotification('Error generating MCQs by topic. Please try again.', 'error');
+    });
+}
+
+function downloadMcqsAsPdf() {
+        if (!currentSessionId) {
+            showNotification('Please generate MCQs first to download.', 'warning');
+            return;
+        }
+
+        const downloadUrl = `{% url 'pdf_mcq:download_mcqs_pdf' %}?session_id=${currentSessionId}`;
+        
+        // Use fetch to make a GET request
+        fetch(downloadUrl)
+            .then(response => {
+                if (response.ok && response.headers.get('Content-Type') === 'application/pdf') {
+                    // If response is OK and content-type is PDF, it's a PDF, so open it in a new tab
+                    window.open(downloadUrl, '_blank');
+                } else if (response.headers.get('Content-Type') === 'application/json') {
+                    // If response is JSON, it's likely an error response
+                    return response.json().then(errorData => {
+                        showNotification(`Error: ${errorData.message}`, 'error');
+                    });
+                } else {
+                    // Handle other unexpected responses
+                    showNotification('An unexpected response was received during PDF download.', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error downloading PDF:', error);
+                showNotification('An unexpected error occurred during PDF download.', 'error');
+            });
+    }
+
+    // Feedback Modal Functions
+    function openFeedbackModal() {
+        document.getElementById('feedbackModal').style.display = 'flex';
+    }
+
+    function closeFeedbackModal() {
+        document.getElementById('feedbackModal').style.display = 'none';
+        document.getElementById('feedbackForm').reset(); // Clear form on close
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+    // File input change event
+    if (pdfInput) {
+        pdfInput.addEventListener('change', function(e) {
+            console.log('PDF input change event fired.');
+            const files = e.target.files;
+            const fileCount = files.length;
+            
+            if (fileCount > 0) {
+                fileCountSpan.textContent = fileCount + ' file(s) selected';
+                console.log('Files selected:', files);
+                displaySelectedFiles(files);
+            } else {
+                fileCountSpan.textContent = 'Choose PDF files';
+                selectedFilesDiv.innerHTML = '';
+                console.log('No files selected.');
+            }
+        });
+    }
+
+    // Drag and drop
+    if (dropZone) {
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('highlight'), false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('highlight'), false);
+        });
+        
+        dropZone.addEventListener('drop', function(e) {
+            const dt = e.dataTransfer;
+            const files = [...dt.files].filter(f => f.type === 'application/pdf');
+            
+            if (files.length) {
+                pdfInput.files = (function() {
+                    const dt = new DataTransfer();
+                    files.forEach(f => dt.items.add(f));
+                    return dt.files;
+                })();
+                pdfInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+    }
+
+    const mcqCountInput = document.getElementById('mcqCountInput');
+    if (mcqCountInput) {
+        // Handle input events - only validate, don't auto-fill
+        mcqCountInput.addEventListener('input', function(e) {
+            let rawValue = this.value;
+            
+            // Allow empty value temporarily while user is typing
+            if (rawValue === '' || rawValue === null) {
+                return; // Don't do anything, let user type
+            }
+            
+            let value = parseInt(rawValue);
+            
+            // Only validate if it's a valid number
+            if (!isNaN(value)) {
+                if (value < 1) {
+                    this.value = 1;
+                    showNotification('Minimum value is 1', 'warning');
+                } else if (value > 100) {
+                    this.value = 100;
+                    showNotification('Maximum value is 100', 'warning');
+                }
+            }
+        });
+        
+        // Handle blur event (when user leaves the field)
+        mcqCountInput.addEventListener('blur', function(e) {
+            let rawValue = this.value;
+            
+            // If empty or invalid, set to default 10
+            if (rawValue === '' || rawValue === null) {
+                this.value = 10;
+                return;
+            }
+            
+            let value = parseInt(rawValue);
+            if (isNaN(value) || value < 1) {
+                this.value = 10;
+                showNotification('Invalid value. Set to 10', 'warning');
+            } else if (value > 100) {
+                this.value = 100;
+                showNotification('Maximum value is 100', 'warning');
+            }
+        });
+        
+        // Allow manual deletion of all characters
+        mcqCountInput.addEventListener('keydown', function(e) {
+            // Allow backspace, delete, arrow keys, etc.
+            const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Tab'];
+            if (allowedKeys.includes(e.key)) {
+                return; // Let these keys work normally
+            }
+            
+            // Allow Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
+            if (e.ctrlKey && ['a', 'c', 'v', 'x'].includes(e.key.toLowerCase())) {
+                return;
+            }
+        });
+    }
+
+    // Form submission handlers
+    document.getElementById('uploadForm')?.addEventListener('submit', function(e) {
+        const files = document.getElementById('pdfFiles').files;
+        if (files.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one PDF file');
+            return;
+        }
+        document.getElementById('processBtn')?.classList.add('loading');
+    });
+
+    document.getElementById('questionForm')?.addEventListener('submit', function() {
+        document.getElementById('generateBtn')?.classList.add('loading');
+    });
+
+    document.getElementById('feedbackForm')?.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const form = e.target;
+        const formData = new FormData(form);
+        const jsonData = {};
+        formData.forEach((value, key) => {
+            jsonData[key] = value;
+        });
+
+        fetch("{% url 'pdf_mcq:submit_feedback' %}", { // This URL needs to be defined
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify(jsonData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showNotification('Thank you for your feedback!', 'success');
+                closeFeedbackModal();
+            } else {
+                showNotification('Error submitting feedback: ' + data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error submitting feedback:', error);
+            showNotification('Error submitting feedback. Please try again.', 'error');
+        });
+    });
+
+    initializeTest();
+});
+
+function toggleFullscreenModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.toggle('modal-fullscreen'); // Toggle on the outer modal
+        const fullscreenBtn = modal.querySelector('.modal-fullscreen-btn i');
+        if (fullscreenBtn) {
+            if (modal.classList.contains('modal-fullscreen')) {
+                fullscreenBtn.classList.remove('fa-expand');
+                fullscreenBtn.classList.add('fa-compress');
+            } else {
+                fullscreenBtn.classList.remove('fa-compress');
+                fullscreenBtn.classList.add('fa-expand');
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

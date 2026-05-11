@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}PrepEnhancer - Dashboard{% endblock %}
+{% block css %}
+    <link rel='stylesheet' href="{% static 'css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <div class="hero-text animate__animated animate__fadeInUp">
+                    <h1 class="hero-title">Elevate Your <span class="highlight">Preparation</span></h1>
+                    <p class="hero-description">
+                        Transform your study material with AI. Generate custom MCQs from PDFs, summarize YouTube videos instantly, and clear doubts with our intelligent RAG-powered chatbot.
+                    </p>
+                    <div class="hero-actions">
+                        {% if not request.user.is_authenticated %}   
+                            <a href="{% url 'account:login' %}" class="btn btn-primary btn-large">Get Started</a>
+                        {% else %}
+                            <a href="{% url 'pdf_mcq:pdf_mcq' %}" class="btn btn-primary btn-large">Generate MCQs</a>
+                        {% endif %}
+
+                        <a href="{% url 'summarize:summarize' %}" class="btn btn-outline btn-large">
+                            <i class="fab fa-youtube"></i> Summarize Video
+                        </a>
+                    </div>
+                    <div class="hero-stats">
+                        <div class="stat">
+                            <h3>10K+</h3>
+                            <p>MCQs Generated</p>
+                        </div>
+                        <div class="stat">
+                            <h3>5K+</h3>
+                            <p>Videos Summarized</p>
+                        </div>
+                        <div class="stat">
+                            <h3>24/7</h3>
+                            <p>AI Support</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="hero-image animate__animated animate__fadeIn">
+                    <div class="floating-card card-1">
+                        <i class="fas fa-file-pdf"></i>
+                        <h4>PDF to MCQ</h4>
+                        <p>Instant Question Sets</p>
+                    </div>
+                    <div class="floating-card card-2">
+                        <i class="fab fa-youtube"></i>
+                        <h4>Video Summary</h4>
+                        <p>Key Insights in Seconds</p>
+                    </div>
+                    <div class="floating-card card-3">
+                        <i class="fas fa-robot"></i>
+                        <h4>AI Tutor</h4>
+                        <p>RAG-Powered Chat</p>
+                    </div>
+                    <div class="hero-visual">
+                        <div class="visual-circle"></div>
+                        <div class="visual-circle"></div>
+                        <div class="visual-circle"></div>
+                        <img src="https://images.unsplash.com/photo-1536148935331-408321065b18?ixlib=rb-1.2.1&auto=format&fit=crop&w=600&q=80" alt="Students learning" class="hero-img">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">AI-Powered <span class="highlight">Learning Tools</span></h2>
+                <p class="section-description">We leverage cutting-edge LLMs to help you master any subject faster and more efficiently.</p>
+            </div>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-magic"></i>
+                    </div>
+                    <h3>Smart MCQ Generator</h3>
+                    <p>Upload your PDFs and let our AI generate specific, high-quality MCQs tailored to your study material.</p>
+                    <a href="{% url 'pdf_mcq:pdf_mcq' %}" class="feature-link">Try Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-globe"></i>
+                    </div>
+                    <h3>AI Universal Summarizer</h3>
+                    <p>Don't have time for long content? Get concise summaries from any YouTube video, article, or web link instantly.</p>
+                    <a href="{% url 'summarize:summarize' %}" class="feature-link">Summarize <i class="fas fa-arrow-right"></i></a>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-microphone-alt"></i>
+                    </div>
+                    <h3>AI Audio Content Generator</h3>
+                    <p>Generate high-quality podcasts, storytelling, or dramatic audio scripts and natural speech from any topic.</p>
+                    <a href="{% url 'ai_audio:audio_generator' %}" class="feature-link">Generate Audio <i class="fas fa-arrow-right"></i></a>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-tasks"></i>
+                    </div>
+                    <h3>Mock Tests & Analysis</h3>
+                    <p>Take structured tests, track your performance, and identify your weak topics with detailed analytics.</p>
+                    <a href="{% url 'test_all:test_page' %}" class="feature-link">Take Test <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    {% endblock %}
