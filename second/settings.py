@@ -34,7 +34,7 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 # ALLOWED_HOSTS configuration
 if DEBUG:
     ALLOWED_HOSTS = [
-    'mcq-generation-using-llms.onrender.com',
+    'https://prep-enhancer.onrender.com/',
     'localhost',
     '127.0.0.1'
 ]
