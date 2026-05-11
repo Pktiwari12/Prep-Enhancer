@@ -219,11 +219,12 @@ if not DEBUG:
     # Replace 'your-app-name' with the actual name of your Render web service
     CSRF_TRUSTED_ORIGINS = [
         'https://*.onrender.com',
-        'https://your-app-name.onrender.com',
+        'https://prep-enhancer.onrender.com'
     ]
 else:
     # Development settings for CSRF and Security
     CSRF_TRUSTED_ORIGINS = [
+        "https://prep-enhancer.onrender.com",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
         "http://0.0.0.0:8000",
