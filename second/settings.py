@@ -44,7 +44,7 @@ else:
     if not ALLOWED_HOSTS:
         # Fallback for production if ALLOWED_HOSTS is not set, though it should be
         print("WARNING: ALLOWED_HOSTS is not set in production environment!")
-        ALLOWED_HOSTS = [] # Django will raise an error if empty and DEBUG=False
+        ALLOWED_HOSTS = [https://prep-enhancer.onrender.com/] # Django will raise an error if empty and DEBUG=False
 
 
 # Application definition
