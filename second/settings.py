@@ -34,7 +34,7 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 # ALLOWED_HOSTS configuration
 if DEBUG:
     ALLOWED_HOSTS = [
-    'prep-enhancer.onrender.com/',
+    'prep-enhancer-h6bg.onrender.com',
     'localhost',
     '127.0.0.1'
 ]
